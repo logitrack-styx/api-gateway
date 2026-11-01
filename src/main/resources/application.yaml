@@ -1,0 +1,26 @@
+spring:
+  application:
+    name: api-gateway
+  config:
+    import: "optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}"
+
+server:
+  port: 8066
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_SERVER_URL:http://localhost:8065/eureka/}
+  instance:
+    prefer-ip-address: true
+
+security:
+  jwt:
+    issuer: ${JWT_ISSUER:logitrack-security}
+    public-key-location: ${JWT_PUBLIC_KEY_LOCATION:classpath:keys/public.pem}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
