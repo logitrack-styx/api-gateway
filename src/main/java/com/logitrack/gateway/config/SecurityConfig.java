@@ -8,6 +8,7 @@ import java.time.ZoneOffset;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -29,6 +30,12 @@ import org.springframework.security.converter.RsaKeyConverters;
 import org.springframework.security.oauth2.jose.jws.SignatureAlgorithm;
 import org.springframework.security.oauth2.jwt.NimbusReactiveJwtDecoder;
 import org.springframework.security.oauth2.jwt.ReactiveJwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtValidators;
+import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
+import org.springframework.security.oauth2.core.OAuth2TokenValidator;
+import org.springframework.security.oauth2.core.OAuth2TokenValidatorResult;
+import org.springframework.security.oauth2.core.OAuth2Error;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.ReactiveJwtAuthenticationConverterAdapter;
 import org.springframework.security.web.server.SecurityWebFilterChain;
@@ -43,7 +50,7 @@ import reactor.core.publisher.Mono;
  * Configuración reactiva de seguridad para Spring Cloud Gateway.
  * Valida centralizadamente JWT RS256, aplica RBAC estricto según la matriz
  * y proporciona respuestas JSON normalizadas para errores 401 y 403.
- */
+ */ //----------------------------------------------------------1
 @Configuration
 @EnableWebFluxSecurity
 public class SecurityConfig {
@@ -55,7 +62,7 @@ public class SecurityConfig {
             ServerAuthenticationEntryPoint authenticationEntryPoint,
             ServerAccessDeniedHandler accessDeniedHandler,
             CorsConfigurationSource corsConfigurationSource) {
-
+//-----------------------------------------------------------------3
         JwtAuthenticationConverter authConverter = new JwtAuthenticationConverter();
         authConverter.setJwtGrantedAuthoritiesConverter(jwt -> {
             Object rolesClaim = jwt.getClaims().get("roles");
@@ -68,7 +75,7 @@ public class SecurityConfig {
                     .map(role -> (GrantedAuthority) new SimpleGrantedAuthority("ROLE_" + role))
                     .toList();
         });
-
+//--------------------------------------------------4-
         http.csrf(ServerHttpSecurity.CsrfSpec::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .authorizeExchange(exchanges -> exchanges
@@ -95,10 +102,10 @@ public class SecurityConfig {
                         .pathMatchers(HttpMethod.PUT, "/api/v1/shipments/*/repartidor").hasRole("ADMIN")
                         .pathMatchers(HttpMethod.PATCH, "/api/v1/shipments/*/cancelacion").hasAnyRole("ADMIN", "CLIENTE")
                         .pathMatchers(HttpMethod.PATCH, "/api/v1/shipments/*/estado").hasAnyRole("ADMIN", "REPARTIDOR")
-                        .pathMatchers(HttpMethod.GET, "/api/v1/shipments/**").hasAnyRole("ADMIN", "CLIENTE", "REPARTIDOR")
+                        .pathMatchers(HttpMethod.GET, "/api/v1/shipments/*", "/api/v1/shipments/seguimiento/*").hasAnyRole("ADMIN", "CLIENTE", "REPARTIDOR")
 
-                        .anyExchange().authenticated()
-                )
+                        .anyExchange().denyAll()
+                )//----------------------------------------5
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint(authenticationEntryPoint)
                         .accessDeniedHandler(accessDeniedHandler)
@@ -110,12 +117,12 @@ public class SecurityConfig {
                         )
                         .authenticationEntryPoint(authenticationEntryPoint)
                         .accessDeniedHandler(accessDeniedHandler)
-                );
+                );//--------------------------------
 
         return http.build();
     }
 
-    @Bean
+    @Bean//--------------------------------2
     ReactiveJwtDecoder reactiveJwtDecoder(
             ResourceLoader resourceLoader,
             @Value("${security.jwt.public-key-location:classpath:keys/public.pem}") String keyLocation,
@@ -132,9 +139,31 @@ public class SecurityConfig {
                 .signatureAlgorithm(SignatureAlgorithm.RS256)
                 .build();
 
+        // Invalid identity claims are authentication failures, before RBAC conversion.
+        OAuth2TokenValidator<Jwt> identityValidator = jwt -> {
+            try {
+                String subject = jwt.getSubject();
+                if (subject == null || !UUID.fromString(subject).toString().equals(subject)) {
+                    throw new IllegalArgumentException("Invalid subject");
+                }
+                Object claim = jwt.getClaims().get("roles");
+                if (!(claim instanceof List<?> roles) || roles.size() != 1
+                        || !roles.stream().allMatch(role ->
+                                role instanceof String && List.of("ADMIN", "CLIENTE", "REPARTIDOR").contains(role))
+                        || jwt.getExpiresAt() == null) {
+                    throw new IllegalArgumentException("Invalid identity claims");
+                }
+                return OAuth2TokenValidatorResult.success();
+            } catch (IllegalArgumentException ex) {
+                return OAuth2TokenValidatorResult.failure(
+                        new OAuth2Error("invalid_token", "Invalid identity claims", null));
+            }
+        };
+        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
+                JwtValidators.createDefaultWithIssuer(issuer), identityValidator));
         return decoder;
     }
-
+//---------------------------------------------------------------------------6
     @Bean
     ServerAuthenticationEntryPoint authenticationEntryPoint(ObjectMapper mapper) {
         return (exchange, ex) -> {
@@ -182,13 +211,14 @@ public class SecurityConfig {
             }
         };
     }
-
+//------------------------------------------------------
     @Bean
-    CorsConfigurationSource corsConfigurationSource() {
+    CorsConfigurationSource corsConfigurationSource(
+            @Value("${security.cors.allowed-origins:http://localhost:3000,http://localhost:5173}") List<String> origins) {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOriginPatterns(List.of("*"));
+        config.setAllowedOrigins(origins);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        config.setAllowedHeaders(List.of(HttpHeaders.AUTHORIZATION, HttpHeaders.CONTENT_TYPE, "*"));
+        config.setAllowedHeaders(List.of(HttpHeaders.AUTHORIZATION, HttpHeaders.CONTENT_TYPE));
         config.setAllowCredentials(false);
         config.setMaxAge(3600L);
 
