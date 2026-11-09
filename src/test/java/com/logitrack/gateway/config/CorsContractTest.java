@@ -79,4 +79,25 @@ class CorsContractTest {
                 .headers(headers -> headers.setBearerAuth("CLIENTE"))
                 .exchange().expectStatus().isForbidden();
     }
+
+    @Test
+    void requiresExactRolesForPersonalShipmentLists() {
+        client.get().uri("/api/v1/shipments/mine")
+                .headers(headers -> headers.setBearerAuth("CLIENTE")).exchange().expectStatus().isOk();
+        client.get().uri("/api/v1/shipments/mine")
+                .headers(headers -> headers.setBearerAuth("ADMIN")).exchange().expectStatus().isForbidden();
+        client.get().uri("/api/v1/shipments/assigned-to-me")
+                .headers(headers -> headers.setBearerAuth("REPARTIDOR")).exchange().expectStatus().isOk();
+        client.get().uri("/api/v1/shipments/assigned-to-me")
+                .headers(headers -> headers.setBearerAuth("CLIENTE")).exchange().expectStatus().isForbidden();
+    }
+
+    @Test
+    void permitsOnlyTheExactWebhookPostWithoutAuthentication() {
+        client.post().uri("/api/v1/payments/webhooks/mercadopago").exchange().expectStatus().isOk();
+        client.get().uri("/api/v1/payments/webhooks/mercadopago").exchange().expectStatus().isUnauthorized();
+        client.post().uri("/api/v1/payments/webhooks/mercadopago/extra").exchange().expectStatus().isUnauthorized();
+        client.post().uri("/api/v1/payments/checkouts")
+                .headers(headers -> headers.setBearerAuth("ADMIN")).exchange().expectStatus().isForbidden();
+    }
 }
