@@ -102,7 +102,16 @@ public class SecurityConfig {
                         .pathMatchers(HttpMethod.PUT, "/api/v1/shipments/*/repartidor").hasRole("ADMIN")
                         .pathMatchers(HttpMethod.PATCH, "/api/v1/shipments/*/cancelacion").hasAnyRole("ADMIN", "CLIENTE")
                         .pathMatchers(HttpMethod.PATCH, "/api/v1/shipments/*/estado").hasAnyRole("ADMIN", "REPARTIDOR")
+                        .pathMatchers(HttpMethod.GET, "/api/v1/shipments/mine").hasRole("CLIENTE")
+                        .pathMatchers(HttpMethod.GET, "/api/v1/shipments/assigned-to-me").hasRole("REPARTIDOR")
+                        .pathMatchers(HttpMethod.POST, "/api/v1/shipments/*/assignment-requests").hasRole("ADMIN")
+                        .pathMatchers(HttpMethod.GET, "/api/v1/shipments/*/assignment-requests/*").hasRole("ADMIN")
                         .pathMatchers(HttpMethod.GET, "/api/v1/shipments/*", "/api/v1/shipments/seguimiento/*").hasAnyRole("ADMIN", "CLIENTE", "REPARTIDOR")
+
+                        .pathMatchers(HttpMethod.POST, "/api/v1/payments/webhooks/mercadopago").permitAll()
+                        .pathMatchers(HttpMethod.POST, "/api/v1/payments/quotes").hasAnyRole("CLIENTE", "ADMIN")
+                        .pathMatchers(HttpMethod.POST, "/api/v1/payments/checkouts").hasRole("CLIENTE")
+                        .pathMatchers(HttpMethod.GET, "/api/v1/payments/quotes/*", "/api/v1/payments/{paymentId:[0-9a-fA-F-]{36}}").hasAnyRole("CLIENTE", "ADMIN")
 
                         .anyExchange().denyAll()
                 )//----------------------------------------5
